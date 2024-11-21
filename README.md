@@ -4,10 +4,10 @@ for visionless Peg-In-Hole with Spiral Trajectory & Implementing objects at Gaze
 * Ubuntu 18.04
 * ROS Melodic
 * Kinova Gen3
-* Robotiq 2f-85 Gripper
+* Robotiq 2f-85 Gripper  
 
-[gen3_lite_examples](https://github.com/AIRLABkhu/gen3_lite_examples)
-[ROS Kortex]((https://github.com/Kinovarobotics/ros_kortex))
+[gen3_lite_examples](https://github.com/AIRLABkhu/gen3_lite_examples)  
+[ROS Kortex](https://github.com/Kinovarobotics/ros_kortex)  
 
 ## Usage
 Gazebo에 Robot arm과 world 불러오기.
