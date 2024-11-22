@@ -9,6 +9,26 @@ for visionless Peg-In-Hole with Spiral Trajectory & Implementing objects at Gaze
 [gen3_lite_examples](https://github.com/AIRLABkhu/gen3_lite_examples)  
 [ROS Kortex](https://github.com/Kinovarobotics/ros_kortex)  
 
+## Structure of package of gen3_moveit
+```sh
+.
+├── CMakeLists.txt
+├── package.xml
+├── ros_kortex_setup.sh
+├── launch
+│   ├── gen3_gazebo.launch
+│   └── gen3_pick_place.launch
+├── models
+│   ├── hole
+│   ├── table1
+│   ├── table2
+│   └── object
+├── world
+│   └── pick_place.world
+└── src
+     └── move_it
+         └── pick_place.cpp
+```
 ## Usage
 Gazebo에 Robot arm과 world 불러오기.
 
