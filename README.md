@@ -15,6 +15,7 @@ for visionless Peg-In-Hole with Spiral Trajectory & Implementing objects at Gaze
 ├── CMakeLists.txt
 ├── package.xml
 ├── ros_kortex_setup.sh
+├── spawn_models.sh
 ├── launch
 │   ├── gen3_gazebo.launch
 │   └── gen3_pick_place.launch
@@ -23,12 +24,11 @@ for visionless Peg-In-Hole with Spiral Trajectory & Implementing objects at Gaze
 │   ├── table1
 │   ├── table2
 │   └── object
-├── world
-│   └── pick_place.world
 └── src
      └── move_it
          └── pick_place.cpp
 ```
+## Set up
 ## Usage
 Gazebo에 Robot arm과 world 불러오기.
 
@@ -39,4 +39,9 @@ roslaunch gen3_moveit gen3_gazebo.launch
 manipulation 코드 실행
 ```
 roslaunch gen3_moveit gen3_pick_place.launch
+```
+Load models into Gazebo
+```
+cd ~/catkin_ws  
+./src/gen3_moveit/spawn_models.sh
 ```
