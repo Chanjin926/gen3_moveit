@@ -1,21 +1,16 @@
-/* Author: Hyoseok Hwang & Jungwoon Lee @ AIRLAB, KHU*/
-
 // ROS
 #include <ros/ros.h>
 
 // MoveIt
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <moveit/move_group_interface/move_group_interface.h>
-#include <cmath>
-#include <iostream>
 
 // TF2
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <control_msgs/GripperCommandActionGoal.h>
 
-#include <gazebo_msgs/ModelStates.h>
-#include <geometry_msgs/Quaternion.h>
-#include <string>
+#include <cmath>
+#include <iostream>
 
 
 void move_to_pose(moveit::planning_interface::MoveGroupInterface &move_group, float x, float y, float z, float roll, float pitch, float yaw) 
@@ -63,7 +58,6 @@ void prePick(moveit::planning_interface::MoveGroupInterface &move_group_interfac
   move_group_interface.execute(trajectory);
 }
 
-
 void postPick(moveit::planning_interface::MoveGroupInterface &move_group_interface)
 {
   moveit_msgs::RobotTrajectory trajectory;
@@ -80,12 +74,12 @@ void postPick(moveit::planning_interface::MoveGroupInterface &move_group_interfa
 
 void prePlace(moveit::planning_interface::MoveGroupInterface &move_group_interface)
 {
-  move_to_pose(move_group_interface, 0, 0.605, 0.75, M_PI/2, 0, M_PI);
+  move_to_pose(move_group_interface, -0.005, 0.605, 0.75, M_PI/2, 0, M_PI);
   moveit_msgs::RobotTrajectory trajectory;
   std::vector<geometry_msgs::Pose> waypoints;
   geometry_msgs::Pose start = move_group_interface.getCurrentPose().pose;
 
-  start.position.z-=0.11;
+  start.position.z-=0.1;
   waypoints.push_back(start);
 
   // with end points of end-effector in waypoints and computerCartesianPath function, you can plan Cartesian path.
@@ -134,13 +128,10 @@ void genSpiral(const std::vector<float>& params, std::vector<float>& xX, std::ve
 
 float getAngle(std::array<float,2> start, std::array<float,2> center, std::array<float,2> curr)
 {
-  float x0 = start[0] - center[0];
-  float y0 = start[1] - center[1];
+  float a = curr[0] - center[0] + start[0];
+  float b = curr[1] - center[1] + start[1];
 
-  float x = curr[0] - center[0];
-  float y = curr[1] - center[1];
-
-  float ct = (x0*x + y0*y) / (sqrt(pow(x0, 2) + pow(y0, 2))*sqrt(pow(x, 2) + pow(y, 2)));
+  float ct = a / sqrt(pow(a, 2) + pow(b, 2));
   float st = sqrt(1 - pow(ct, 2));
   float theta = atan2(st, ct);
   
@@ -186,7 +177,6 @@ void spiralTrajectory(moveit::planning_interface::MoveGroupInterface& group)
     float roll = M_PI / 2 - atan2(dy / 4, dz);
     float pitch = atan2(dx / 4, dz);
     float yaw = atan2(next_pose.position.x, next_pose.position.y);
-    
 
     // Set orientation
     tf2::Quaternion orientation;
@@ -200,7 +190,7 @@ void spiralTrajectory(moveit::planning_interface::MoveGroupInterface& group)
   group.execute(trajectory);
 }
 
-void partialSFT(moveit::planning_interface::MoveGroupInterface& group, float tlim_start, float tlim_end)
+void partialST(moveit::planning_interface::MoveGroupInterface& group, float tlim_start, float tlim_end)
 {
   geometry_msgs::Pose current_pose = group.getCurrentPose().pose;
 
@@ -210,7 +200,7 @@ void partialSFT(moveit::planning_interface::MoveGroupInterface& group, float tli
   float start_z = current_pose.position.z;
 
   // Get the waypoints of conical spiral
-  std::vector<float> params = {0.002, 0.00001, 0.03, 100, 3.0};
+  std::vector<float> params = {0.002, 0.00001, 0.015, 100, 3.0};
   std::vector<float> xX, yY, zZ;
   genSpiral(params, xX, yY, zZ);
 
@@ -227,12 +217,11 @@ void partialSFT(moveit::planning_interface::MoveGroupInterface& group, float tli
   for (int i = 0; i < xX.size()-1; i++)
   {
     // Planning for the next pose
-    geometry_msgs::Pose next_pose = current_pose;
+    geometry_msgs::Pose next_pose;
     std::array<float, 2> curr = {xX[i], yY[i]};
     float theta = getAngle(start, center, curr);
     if ((theta > tlim_start) && (theta < tlim_end))
     {
-
       // Planning for the next pose
       next_pose.position.x = start_x + xX[i];
       next_pose.position.y = start_y + yY[i];
@@ -245,11 +234,9 @@ void partialSFT(moveit::planning_interface::MoveGroupInterface& group, float tli
       float dz = end_z - next_pose.position.z;
 
       // Compute Roll, Pitch, Yaw
-      float roll = M_PI / 2 - atan2(dy / 4, dz);
-      float pitch = atan2(dx / 4, dz);
+      float roll = M_PI / 2 - atan2(dy / 3, dz);
+      float pitch = atan2(dx / 3, dz);
       float yaw = atan2(next_pose.position.x, next_pose.position.y);
-      // float yaw = atan2(next_pose.position.y - base_y, next_pose.position.x - base_x);
-      
 
       // Set orientation
       tf2::Quaternion orientation;
@@ -294,74 +281,6 @@ void closeGripper(ros::Publisher &gripper_pub)
   ROS_INFO("Gripper closed");
 }
 
-geometry_msgs::Quaternion getModelOrientation(const std::string& target_model_name)
-{
-    ros::NodeHandle nh;
-    gazebo_msgs::ModelStates::ConstPtr model_states_msg;
-    
-    // Wait for the /gazebo/model_states topic
-    ros::topic::waitForMessage<gazebo_msgs::ModelStates>("/gazebo/model_states", nh);
-    
-    // Get the latest message
-    model_states_msg = ros::topic::waitForMessage<gazebo_msgs::ModelStates>("/gazebo/model_states", nh);
-    
-    // Search for the target model name
-    for (size_t i = 0; i < model_states_msg->name.size(); ++i)
-    {
-        if (model_states_msg->name[i] == target_model_name)
-        {
-            // Return the orientation of the matching model
-            return model_states_msg->pose[i].orientation;
-        }
-    }
-
-    // If the model is not found, return a default orientation
-    ROS_WARN("Model '%s' not found in /gazebo/model_states", target_model_name.c_str());
-    geometry_msgs::Quaternion default_orientation;
-    default_orientation.x = 0.0;
-    default_orientation.y = 0.0;
-    default_orientation.z = 0.0;
-    default_orientation.w = 1.0;
-    return default_orientation;
-}
-
-void test_function(moveit::planning_interface::MoveGroupInterface &move_group_interface, float r, float p, float y)
-{
-  geometry_msgs::Pose current_pose = move_group_interface.getCurrentPose().pose;
-
-  tf2::Quaternion orientation;
-  orientation.setRPY(r, p, y);
-  current_pose.orientation = tf2::toMsg(orientation);
-
-  // Compute and execute trajectory
-  std::vector<geometry_msgs::Pose> waypoints = {current_pose};
-  moveit_msgs::RobotTrajectory trajectory;
-  ROS_DEBUG("Trying to compute cartesian path");
-  double fraction_completed = move_group_interface.computeCartesianPath(waypoints, 0.01, 0.0, trajectory);
-  if(fraction_completed == 1) {
-
-    ROS_DEBUG("%f of path computed", fraction_completed);
-
-  }
-  ROS_DEBUG("Trying to exectue cartesian path");
-  move_group_interface.execute(trajectory);
-}
-
-void pose_based_PST(moveit::planning_interface::MoveGroupInterface &move_group_interface)
-{
-  // current pose check
-  // calculate distance between point1 & 2
-  // If (both distance > threshold) Then
-  //   prePlace -> position adjustment
-  // End if
-  // If (current position is closer to point1) Then
-  //   partialTraj(move group, a, b)
-  // End if
-  // Else
-  //   partialTraj(move group, c, d)
-  // End if 
-}
-
 void insert(moveit::planning_interface::MoveGroupInterface &move_group_interface)
 {
   // setRPY(upright at the place position)
@@ -375,7 +294,7 @@ void insert(moveit::planning_interface::MoveGroupInterface &move_group_interface
   // set initial value
   previous_pose.position.z += 0.001;
   // WHILE (dz > threshold)
-  while (previous_pose.position.z - current_pose.position.z > 0.0005)
+  while (previous_pose.position.z - current_pose.position.z > 0.0007)
   {
     // update previous_pose for the comparison
     previous_pose.position.z = current_pose.position.z;
@@ -392,6 +311,57 @@ void insert(moveit::planning_interface::MoveGroupInterface &move_group_interface
   }
   ROS_INFO("Inserted successfully");
 }
+
+void placePipeline(moveit::planning_interface::MoveGroupInterface &move_group_interface, ros::Publisher &gripper_pub, int retry_count = 0) 
+{
+  const int max_retries = 1;
+  float tlim_start = 0;
+  float tlim_end = 1;
+
+  prePlace(move_group_interface);
+
+  // Pose check considering the padding in prePlace function
+  geometry_msgs::Pose current = move_group_interface.getCurrentPose().pose;
+  if ((current.position.x < -0.055) || (current.position.x > 0.05)) {
+    prePlace(move_group_interface);
+  }
+
+  try {
+    spiralTrajectory(move_group_interface);
+    ros::WallDuration(1.0).sleep();
+
+    partialST(move_group_interface, tlim_start, tlim_end);
+    ros::WallDuration(1.0).sleep();
+
+    partialST(move_group_interface, tlim_start, tlim_end);
+    ros::WallDuration(1.0).sleep();
+
+    insert(move_group_interface);
+    ros::WallDuration(1.0).sleep();
+
+    openGripper(gripper_pub);
+    ros::WallDuration(1.0).sleep();
+
+    postPlace(move_group_interface);
+    ros::WallDuration(1.0).sleep();
+
+    ROS_INFO("Place pipeline completed successfully.");
+  } 
+  catch (const std::exception& e) {
+    ROS_WARN("Place pipeline aborted: %s", e.what());
+
+    // recall the pipeline if it's not retried
+    if (retry_count < max_retries) {
+      ROS_WARN("Retrying PlacePipeline... Attempt %d of %d", retry_count + 1, max_retries);
+      placePipeline(move_group_interface, gripper_pub, retry_count + 1);  // 재귀 호출
+    } 
+    else {
+      ROS_ERROR("Maximum retries reached. Aborting.");
+      return;
+    }
+  }
+}
+
 
 int main(int argc, char** argv)
 {
@@ -416,7 +386,7 @@ int main(int argc, char** argv)
   while(loop)
   {
     int cmd;
-    std::cout << "Menu? (0:exit / 1:move to initail pose / 2:pick / 3:pre place / 4:post place / 5:open gripper / 6:insert / 7:spiral / 8:partial) ";
+    std::cout << "Menu? (0:exit / 1:move to initail pose / 2:pick / 3:place) ";
     std::cin >> cmd;
     switch(cmd) {
       case 1:
@@ -434,27 +404,7 @@ int main(int argc, char** argv)
         ros::WallDuration(1.0).sleep();
         break;
       case 3:
-        prePlace(arm);
-        ros::WallDuration(1.0).sleep();
-        break;
-      case 4:
-        postPlace(arm);
-        ros::WallDuration(1.0).sleep();
-        break;
-      case 5:
-        openGripper(gripper_pub);
-        ros::WallDuration(1.0).sleep();
-        break;
-      case 6:
-        insert(arm);
-        ros::WallDuration(1.0).sleep();
-        break;
-      case 7:
-        spiralTrajectory(arm);
-        ros::WallDuration(1.0).sleep();
-        break;
-      case 8:
-        partialSFT(arm, 0, 10);
+        placePipeline(arm, gripper_pub, 0);
         ros::WallDuration(1.0).sleep();
         break;
       case 0:
@@ -466,4 +416,3 @@ int main(int argc, char** argv)
   ros::waitForShutdown();
   return 0;
 }
-
