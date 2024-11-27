@@ -50,7 +50,7 @@ void prePick(moveit::planning_interface::MoveGroupInterface &move_group_interfac
   std::vector<geometry_msgs::Pose> waypoints;
   geometry_msgs::Pose start = move_group_interface.getCurrentPose().pose;
 
-  start.position.x+=0.14;
+  start.position.x+=0.135;
   waypoints.push_back(start);
 
   // with end points of end-effector in waypoints and computerCartesianPath function, you can plan Cartesian path.
@@ -74,12 +74,13 @@ void postPick(moveit::planning_interface::MoveGroupInterface &move_group_interfa
 
 void prePlace(moveit::planning_interface::MoveGroupInterface &move_group_interface)
 {
-  move_to_pose(move_group_interface, -0.005, 0.605, 0.75, M_PI/2, 0, M_PI);
+  move_to_pose(move_group_interface, -0.01, 0.605, 0.75, M_PI/2, 0, M_PI);
+  // move_to_pose(move_group_interface, 0.005, 0.605, 0.75, M_PI/2, 0, M_PI);
   moveit_msgs::RobotTrajectory trajectory;
   std::vector<geometry_msgs::Pose> waypoints;
   geometry_msgs::Pose start = move_group_interface.getCurrentPose().pose;
 
-  start.position.z-=0.1;
+  start.position.z-=0.11;
   waypoints.push_back(start);
 
   // with end points of end-effector in waypoints and computerCartesianPath function, you can plan Cartesian path.
@@ -101,7 +102,7 @@ void postPlace(moveit::planning_interface::MoveGroupInterface &move_group_interf
   move_group_interface.execute(trajectory);
 }
 
-void genSpiral(const std::vector<float>& params, std::vector<float>& xX, std::vector<float>& yY, std::vector<float>& zZ)
+void genSpiral(const std::vector<float>& params, std::vector<float>& xX, std::vector<float>& yY, std::vector<float>& zZ, int reverse)
 {
   // params: [radius_start, radius_end, height, num_points, turns]
   float radius_start = params[0];
@@ -119,10 +120,16 @@ void genSpiral(const std::vector<float>& params, std::vector<float>& xX, std::ve
 
     float x = radius * cos(angle);
     float y = radius * sin(angle);
-
-    xX.push_back(x);
-    yY.push_back(y);
-    zZ.push_back(-z);
+    if (reverse == 0) {
+      xX.push_back(x);
+      yY.push_back(y);
+      zZ.push_back(-z);
+    }
+    else {
+      xX.push_back(-x);
+      yY.push_back(-y);
+      zZ.push_back(-z);
+    }
   }
 }
 
@@ -138,7 +145,7 @@ float getAngle(std::array<float,2> start, std::array<float,2> center, std::array
   return theta;
 }
 
-void spiralTrajectory(moveit::planning_interface::MoveGroupInterface& group)
+void spiralTrajectory(moveit::planning_interface::MoveGroupInterface& group, int reverse)
 {
   geometry_msgs::Pose current_pose = group.getCurrentPose().pose;
 
@@ -150,7 +157,7 @@ void spiralTrajectory(moveit::planning_interface::MoveGroupInterface& group)
   // Get the waypoints of conical spiral
   std::vector<float> params = {0.002, 0.00001, 0.03, 100, 3.0};
   std::vector<float> xX, yY, zZ;
-  genSpiral(params, xX, yY, zZ);
+  genSpiral(params, xX, yY, zZ, reverse);
 
   moveit::planning_interface::MoveGroupInterface::Plan my_plan;
   std::vector<geometry_msgs::Pose> waypoints;
@@ -190,7 +197,7 @@ void spiralTrajectory(moveit::planning_interface::MoveGroupInterface& group)
   group.execute(trajectory);
 }
 
-void partialST(moveit::planning_interface::MoveGroupInterface& group, float tlim_start, float tlim_end)
+void partialST(moveit::planning_interface::MoveGroupInterface& group, float tlim_start, float tlim_end, int reverse = 0)
 {
   geometry_msgs::Pose current_pose = group.getCurrentPose().pose;
 
@@ -202,7 +209,7 @@ void partialST(moveit::planning_interface::MoveGroupInterface& group, float tlim
   // Get the waypoints of conical spiral
   std::vector<float> params = {0.002, 0.00001, 0.015, 100, 3.0};
   std::vector<float> xX, yY, zZ;
-  genSpiral(params, xX, yY, zZ);
+  genSpiral(params, xX, yY, zZ, reverse);
 
   moveit::planning_interface::MoveGroupInterface::Plan my_plan;
   std::vector<geometry_msgs::Pose> waypoints;
@@ -234,8 +241,8 @@ void partialST(moveit::planning_interface::MoveGroupInterface& group, float tlim
       float dz = end_z - next_pose.position.z;
 
       // Compute Roll, Pitch, Yaw
-      float roll = M_PI / 2 - atan2(dy / 3, dz);
-      float pitch = atan2(dx / 3, dz);
+      float roll = M_PI / 2 - atan2(dy / 4, dz);
+      float pitch = atan2(dx / 4, dz);
       float yaw = atan2(next_pose.position.x, next_pose.position.y);
 
       // Set orientation
@@ -312,6 +319,49 @@ void insert(moveit::planning_interface::MoveGroupInterface &move_group_interface
   ROS_INFO("Inserted successfully");
 }
 
+int needReverse(moveit::planning_interface::MoveGroupInterface &move_group_interface)
+{
+  geometry_msgs::Pose current = move_group_interface.getCurrentPose().pose;
+  if (current.position.x >= 0) {
+    return 1;
+  }
+  return 0;
+}
+
+void pickPipeline(moveit::planning_interface::MoveGroupInterface &move_group_interface, ros::Publisher &gripper_pub, int retry_count = 0)
+{
+  const int max_retries = 1;
+
+  try {
+    openGripper(gripper_pub);
+    ros::WallDuration(1.0).sleep();
+
+    prePick(move_group_interface);
+    ros::WallDuration(1.0).sleep();
+
+    closeGripper(gripper_pub);
+    ros::WallDuration(1.0).sleep();
+
+    postPick(move_group_interface);
+    ros::WallDuration(1.0).sleep();
+
+    ROS_INFO("Pick pipeline completed successfully.");
+  } 
+  catch (const std::exception& e) {
+    ROS_WARN("Pick pipeline aborted: %s", e.what());
+
+    // recall the pipeline if it's not retried
+    if (retry_count < max_retries) {
+      ROS_WARN("Retrying PickPipeline... Attempt %d of %d", retry_count + 1, max_retries);
+      pickPipeline(move_group_interface, gripper_pub, retry_count + 1);
+    } 
+    else {
+      ROS_ERROR("Maximum retries reached. Aborting.");
+      return;
+    }
+  }
+}
+
 void placePipeline(moveit::planning_interface::MoveGroupInterface &move_group_interface, ros::Publisher &gripper_pub, int retry_count = 0) 
 {
   const int max_retries = 1;
@@ -323,17 +373,23 @@ void placePipeline(moveit::planning_interface::MoveGroupInterface &move_group_in
   // Pose check considering the padding in prePlace function
   geometry_msgs::Pose current = move_group_interface.getCurrentPose().pose;
   if ((current.position.x < -0.055) || (current.position.x > 0.05)) {
+    ROS_INFO("Invalid pose. Recalling prePlace().");
+
     prePlace(move_group_interface);
+    ros::WallDuration(1.0).sleep();
   }
 
+  // set the parameter based on pose after prePlace execution
+  int reverse = needReverse(move_group_interface);
+
   try {
-    spiralTrajectory(move_group_interface);
+    spiralTrajectory(move_group_interface, reverse);
     ros::WallDuration(1.0).sleep();
 
-    partialST(move_group_interface, tlim_start, tlim_end);
+    partialST(move_group_interface, tlim_start, tlim_end, reverse);
     ros::WallDuration(1.0).sleep();
 
-    partialST(move_group_interface, tlim_start, tlim_end);
+    partialST(move_group_interface, tlim_start, tlim_end, reverse);
     ros::WallDuration(1.0).sleep();
 
     insert(move_group_interface);
@@ -353,7 +409,7 @@ void placePipeline(moveit::planning_interface::MoveGroupInterface &move_group_in
     // recall the pipeline if it's not retried
     if (retry_count < max_retries) {
       ROS_WARN("Retrying PlacePipeline... Attempt %d of %d", retry_count + 1, max_retries);
-      placePipeline(move_group_interface, gripper_pub, retry_count + 1);  // 재귀 호출
+      placePipeline(move_group_interface, gripper_pub, retry_count + 1);
     } 
     else {
       ROS_ERROR("Maximum retries reached. Aborting.");
@@ -361,7 +417,6 @@ void placePipeline(moveit::planning_interface::MoveGroupInterface &move_group_in
     }
   }
 }
-
 
 int main(int argc, char** argv)
 {
@@ -371,16 +426,11 @@ int main(int argc, char** argv)
   spinner.start();
 
   ros::WallDuration(1.0).sleep();
-  // moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
   moveit::planning_interface::MoveGroupInterface arm("arm");
-  // moveit::planning_interface::MoveGroupInterface gripper("gripper");
   arm.setPlanningTime(45.0);
 
   ros::Publisher gripper_pub = nh.advertise<control_msgs::GripperCommandActionGoal>(
         "/my_gen3/robotiq_2f_85_gripper_controller/gripper_cmd/goal", 10);
-
-  // Wait a bit for ROS things to initialize
-  // ros::WallDuration(1.0).sleep();
 
   bool loop = true;
   while(loop)
@@ -394,13 +444,7 @@ int main(int argc, char** argv)
         ros::WallDuration(1.0).sleep();
         break;
       case 2:
-        prePick(arm);
-        ros::WallDuration(1.0).sleep();
-
-        closeGripper(gripper_pub);
-        ros::WallDuration(1.0).sleep();
-
-        postPick(arm);
+        pickPipeline(arm, gripper_pub, 0);
         ros::WallDuration(1.0).sleep();
         break;
       case 3:
